@@ -15,6 +15,9 @@ in some scenarios, e.g. when you want to show the status of each thread (idle/ru
 Here is a basic example:
 
 ```rust
+use std::{thread::sleep, time::Duration};
+use lending_thread_pool::ThreadPool;
+
 let cores = 4;
 
 let mut pool = ThreadPool::new(
