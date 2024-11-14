@@ -49,11 +49,26 @@ impl<WorkerData: Send + 'static> fmt::Debug for PoolQueue<WorkerData> {
 	}
 }
 
+enum DequeueResult<WorkerData> {
+	Joined,
+	WaitingForTasks,
+	TaskAvailable {
+		task: Task<WorkerData>,
+		has_more: bool,
+	},
+}
+
 impl<WorkerData: Send + 'static> PoolQueue<WorkerData> {
-	fn dequeue(&mut self) -> Result<Option<Task<WorkerData>>, ()> {
+	fn dequeue(&mut self) -> DequeueResult<WorkerData> {
 		match self {
-			Self::Done => Err(()),
-			Self::Todo(ref mut tasks) => Ok(tasks.pop_front()),
+			Self::Done => DequeueResult::Joined,
+			Self::Todo(ref mut tasks) => match tasks.pop_front() {
+				Some(task) => DequeueResult::TaskAvailable {
+					task,
+					has_more: !tasks.is_empty(),
+				},
+				None => DequeueResult::WaitingForTasks,
+			},
 		}
 	}
 }
@@ -153,20 +168,23 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 						} = &*inner_clone;
 						let mut guard = pending_tasks.lock().unwrap();
 
-						let pending_task = loop {
+						let dequeued = loop {
 							match guard.dequeue() {
-								Ok(None) => {
+								DequeueResult::Joined => break None,
+								DequeueResult::WaitingForTasks => {
 									debug!("waiting for tasks...");
 									guard = workers_condvar.wait(guard).unwrap();
 								}
-								Ok(Some(task)) => break Some(task),
-								Err(_) => break None,
+								dequeued => break Some(dequeued),
 							}
 						};
 
-						if let Some(task) = pending_task {
+						if let Some(DequeueResult::TaskAvailable { task, has_more }) = dequeued {
 							pool_condvar.notify_all();
 							drop(guard);
+							if has_more {
+								workers_condvar.notify_all();
+							}
 							debug!("running task...");
 							(task)(&mut worker_data);
 						} else {
