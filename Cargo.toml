@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Carlo Dell'Acqua <carlo.dellacqua97@gmail.com>"]
 
+description = "A thread pool where workers can lend their data to their tasks."
+keywords = ["threadpool", "thread", "pool", "threading", "parallelism"]
+categories = ["concurrency"]
+license = "MIT"
+repository = "https://github.com/cdellacqua/lending_thread_pool.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
