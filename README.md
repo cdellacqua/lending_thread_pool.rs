@@ -1,4 +1,4 @@
-# lending_thread_pool
+# lending thread pool
 
 [![Documentation](https://docs.rs/lending_thread_pool/badge.svg)](https://docs.rs/lending_thread_pool/)
 [![Crates.io](https://img.shields.io/crates/v/lending_thread_pool.svg)](https://crates.io/crates/lending_thread_pool)

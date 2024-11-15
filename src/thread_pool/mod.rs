@@ -82,9 +82,9 @@ struct ThreadPoolShared<WorkerData: Send + 'static> {
 }
 
 impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
-	/// Construct a thread pool given a Vec of WorkerData. The number of workers
+	/// Construct a thread pool given a Vec of `WorkerData`. The number of workers
 	/// will correspond to the length of the Vec, so will the queue size for pending tasks.
-	/// Note that WorkerData can be any type. Each worker thread will own its corresponding WorkerData.
+	/// Note that `WorkerData` can be any type. Each worker thread will own its corresponding `WorkerData`.
 	///
 	/// # Panics
 	/// - if Vec is empty
@@ -105,18 +105,19 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 	/// 	pool.enqueue(|greeting| { println!("{greeting}"); });
 	/// }
 	/// ```
+	#[must_use]
 	pub fn new(workers_data: Vec<WorkerData>) -> Self {
 		let max_pending = workers_data.len();
 		Self::new_with_queue_size(workers_data, max_pending)
 	}
 
-	/// Construct a thread pool given a Vec of WorkerData. The number of workers
-	/// will correspond to the length of the Vec. Note that WorkerData can be any
-	/// type you want. Each worker thread will own its corresponding WorkerData.
+	/// Construct a thread pool given a Vec of `WorkerData`. The number of workers
+	/// will correspond to the length of the Vec. Note that `WorkerData` can be any
+	/// type you want. Each worker thread will own its corresponding `WorkerData`.
 	///
 	/// # Panics
 	/// - if Vec is empty
-	/// - if max_pending_tasks is 0.
+	/// - if `max_pending_tasks` is 0.
 	///
 	/// # Examples
 	///
@@ -135,6 +136,7 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 	/// 	pool.enqueue(|greeting| { println!("{greeting}"); });
 	/// }
 	/// ```
+	#[must_use]
 	pub fn new_with_queue_size(workers_data: Vec<WorkerData>, max_pending_tasks: usize) -> Self {
 		assert_ne!(
 			workers_data.len(),
@@ -147,8 +149,8 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 		);
 
 		let inner = Arc::new(ThreadPoolShared {
-			workers_condvar: Default::default(),
-			pool_condvar: Default::default(),
+			workers_condvar: Condvar::default(),
+			pool_condvar: Condvar::default(),
 			pending_tasks: Mutex::new(PoolQueue::Todo(VecDeque::new())),
 			max_pending_tasks,
 		});
@@ -175,7 +177,9 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 									debug!("waiting for tasks...");
 									guard = workers_condvar.wait(guard).unwrap();
 								}
-								dequeued => break Some(dequeued),
+								dequeued @ DequeueResult::TaskAvailable { .. } => {
+									break Some(dequeued)
+								}
 							}
 						};
 
@@ -205,6 +209,13 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 	///
 	/// This method is blocking. It waits for the task queue to have at least one empty
 	/// slot before returning.
+
+	// clippy::missing_panics_doc: a panic section in the doc might be misleading, as in order
+	// to actually cause a panic, you would need to call this method after
+	// the thread pool has already been dropped, meaning you're either dereferencing a pointer
+	// to some dropped yet somehow mostly intact thread pool struct, or you found a bug in the type
+	// system.
+	#[allow(clippy::missing_panics_doc)]
 	pub fn enqueue<Task: FnOnce(&mut WorkerData) + Send + 'static>(&mut self, task: Task) {
 		let mut guard = self.inner.pending_tasks.lock().unwrap();
 
@@ -222,7 +233,7 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 					}
 				}
 				PoolQueue::Done => unreachable!(
-					"Enqueue shouldn't be callable on a joined (thus consumed) thread pool"
+					"enqueue shouldn't be callable on a joined (thus consumed) thread pool"
 				),
 			}
 		}
@@ -244,7 +255,7 @@ impl<WorkerData: Send + 'static> ThreadPool<WorkerData> {
 				// already joined
 				PoolQueue::Done => return,
 				PoolQueue::Todo(tasks) if tasks.is_empty() => break,
-				_ => {
+				PoolQueue::Todo(_) => {
 					debug!("waiting for idle...");
 					guard = self.inner.pool_condvar.wait(guard).unwrap();
 				}
