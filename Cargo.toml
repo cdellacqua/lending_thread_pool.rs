@@ -14,7 +14,6 @@ repository = "https://github.com/cdellacqua/lending_thread_pool.rs"
 
 [dependencies]
 tracing = "0.1.40"
-tracing-test = "0.2.5"
 
 [dev-dependencies]
 indicatif = "0.17.9"
